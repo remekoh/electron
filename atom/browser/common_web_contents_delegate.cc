@@ -16,8 +16,8 @@
 #include "atom/browser/web_dialog_helper.h"
 #include "atom/common/atom_constants.h"
 #include "base/files/file_util.h"
-#include "base/prefs/pref_service.h"
-#include "base/prefs/scoped_user_pref_update.h"
+#include "components/prefs/pref_service.h"
+#include "components/prefs/scoped_user_pref_update.h"
 #include "chrome/browser/printing/print_preview_message_handler.h"
 #include "chrome/browser/printing/print_view_manager_basic.h"
 #include "chrome/browser/ui/browser_dialogs.h"
@@ -30,14 +30,6 @@
 #include "content/public/browser/security_style_explanation.h"
 #include "content/public/browser/security_style_explanations.h"
 #include "storage/browser/fileapi/isolated_context.h"
-
-#if defined(TOOLKIT_VIEWS)
-#include "atom/browser/native_window_views.h"
-#endif
-
-#if defined(USE_X11)
-#include "atom/browser/browser.h"
-#endif
 
 using content::BrowserThread;
 using security_state::SecurityStateModel;
@@ -102,7 +94,7 @@ FileSystem CreateFileSystemStruct(
 }
 
 base::DictionaryValue* CreateFileSystemValue(const FileSystem& file_system) {
-  base::DictionaryValue* file_system_value = new base::DictionaryValue();
+  auto* file_system_value = new base::DictionaryValue();
   file_system_value->SetString("fileSystemName", file_system.file_system_name);
   file_system_value->SetString("rootURL", file_system.root_url);
   file_system_value->SetString("fileSystemPath", file_system.file_system_path);
@@ -182,7 +174,9 @@ CommonWebContentsDelegate::~CommonWebContentsDelegate() {
 }
 
 void CommonWebContentsDelegate::InitWithWebContents(
-    content::WebContents* web_contents) {
+    content::WebContents* web_contents,
+    AtomBrowserContext* browser_context) {
+  browser_context_ = browser_context;
   web_contents->SetDelegate(this);
 
   printing::PrintViewManagerBasic::CreateForWebContents(web_contents);
@@ -383,13 +377,13 @@ content::SecurityStyle CommonWebContentsDelegate::GetSecurityStyle(
 void CommonWebContentsDelegate::DevToolsSaveToFile(
     const std::string& url, const std::string& content, bool save_as) {
   base::FilePath path;
-  PathsMap::iterator it = saved_files_.find(url);
+  auto it = saved_files_.find(url);
   if (it != saved_files_.end() && !save_as) {
     path = it->second;
   } else {
     file_dialog::Filters filters;
     base::FilePath default_path(base::FilePath::FromUTF8Unsafe(url));
-    if (!file_dialog::ShowSaveDialog(owner_window(), url, default_path,
+    if (!file_dialog::ShowSaveDialog(owner_window(), url, "", default_path,
                                      filters, &path)) {
       base::StringValue url_value(url);
       web_contents_->CallClientFunction(
@@ -408,7 +402,7 @@ void CommonWebContentsDelegate::DevToolsSaveToFile(
 
 void CommonWebContentsDelegate::DevToolsAppendToFile(
     const std::string& url, const std::string& content) {
-  PathsMap::iterator it = saved_files_.find(url);
+  auto it = saved_files_.find(url);
   if (it == saved_files_.end())
     return;
 
@@ -441,8 +435,8 @@ void CommonWebContentsDelegate::DevToolsRequestFileSystems() {
   }
 
   base::ListValue file_system_value;
-  for (size_t i = 0; i < file_systems.size(); ++i)
-    file_system_value.Append(CreateFileSystemValue(file_systems[i]));
+  for (const auto& file_system : file_systems)
+    file_system_value.Append(CreateFileSystemValue(file_system));
   web_contents_->CallClientFunction("DevToolsAPI.fileSystemsLoaded",
                                     &file_system_value, nullptr, nullptr);
 }
@@ -455,7 +449,7 @@ void CommonWebContentsDelegate::DevToolsAddFileSystem(
     base::FilePath default_path;
     std::vector<base::FilePath> paths;
     int flag = file_dialog::FILE_DIALOG_OPEN_DIRECTORY;
-    if (!file_dialog::ShowOpenDialog(owner_window(), "", default_path,
+    if (!file_dialog::ShowOpenDialog(owner_window(), "", "", default_path,
                                      filters, flag, &paths))
       return;
 
@@ -470,7 +464,7 @@ void CommonWebContentsDelegate::DevToolsAddFileSystem(
   FileSystem file_system = CreateFileSystemStruct(GetDevToolsWebContents(),
                                                  file_system_id,
                                                  path.AsUTF8Unsafe());
-  scoped_ptr<base::DictionaryValue> file_system_value(
+  std::unique_ptr<base::DictionaryValue> file_system_value(
       CreateFileSystemValue(file_system));
 
   auto pref_service = GetPrefService(GetDevToolsWebContents());
@@ -616,9 +610,8 @@ void CommonWebContentsDelegate::OnDevToolsSearchCompleted(
     const std::string& file_system_path,
     const std::vector<std::string>& file_paths) {
   base::ListValue file_paths_value;
-  for (std::vector<std::string>::const_iterator it(file_paths.begin());
-       it != file_paths.end(); ++it) {
-    file_paths_value.AppendString(*it);
+  for (const auto& file_path : file_paths) {
+    file_paths_value.AppendString(file_path);
   }
   base::FundamentalValue request_id_value(request_id);
   base::StringValue file_system_path_value(file_system_path);
@@ -627,23 +620,6 @@ void CommonWebContentsDelegate::OnDevToolsSearchCompleted(
                                     &file_system_path_value,
                                     &file_paths_value);
 }
-
-#if defined(TOOLKIT_VIEWS)
-gfx::ImageSkia CommonWebContentsDelegate::GetDevToolsWindowIcon() {
-  if (!owner_window())
-    return gfx::ImageSkia();
-  return static_cast<views::WidgetDelegate*>(static_cast<NativeWindowViews*>(
-      owner_window()))->GetWindowAppIcon();
-}
-#endif
-
-#if defined(USE_X11)
-void CommonWebContentsDelegate::GetDevToolsWindowWMClass(
-    std::string* name, std::string* class_name) {
-  *class_name = Browser::Get()->GetName();
-  *name = base::ToLowerASCII(*class_name);
-}
-#endif
 
 void CommonWebContentsDelegate::SetHtmlApiFullscreen(bool enter_fullscreen) {
   // Window is already in fullscreen mode, save the state.

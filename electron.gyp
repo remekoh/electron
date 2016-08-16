@@ -4,7 +4,7 @@
     'product_name%': 'Electron',
     'company_name%': 'GitHub, Inc',
     'company_abbr%': 'github',
-    'version%': '1.0.1',
+    'version%': '1.3.3',
   },
   'includes': [
     'filenames.gypi',
@@ -150,16 +150,15 @@
                 '<(libchromiumcontent_dir)/libEGL.dll',
                 '<(libchromiumcontent_dir)/libGLESv2.dll',
                 '<(libchromiumcontent_dir)/icudtl.dat',
+                '<(libchromiumcontent_dir)/blink_image_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/content_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/content_shell.pak',
                 '<(libchromiumcontent_dir)/ui_resources_200_percent.pak',
+                '<(libchromiumcontent_dir)/views_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/natives_blob.bin',
                 '<(libchromiumcontent_dir)/snapshot_blob.bin',
                 'external_binaries/d3dcompiler_47.dll',
                 'external_binaries/xinput1_3.dll',
-                'external_binaries/msvcp120.dll',
-                'external_binaries/msvcr120.dll',
-                'external_binaries/vccorlib120.dll',
               ],
             },
           ],
@@ -192,7 +191,11 @@
                 '<@(copied_libraries)',
                 '<(libchromiumcontent_dir)/locales',
                 '<(libchromiumcontent_dir)/icudtl.dat',
+                '<(libchromiumcontent_dir)/blink_image_resources_200_percent.pak',
+                '<(libchromiumcontent_dir)/content_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/content_shell.pak',
+                '<(libchromiumcontent_dir)/ui_resources_200_percent.pak',
+                '<(libchromiumcontent_dir)/views_resources_200_percent.pak',
                 '<(libchromiumcontent_dir)/natives_blob.bin',
                 '<(libchromiumcontent_dir)/snapshot_blob.bin',
               ],
@@ -210,6 +213,9 @@
         'vendor/node/node.gyp:node',
       ],
       'defines': [
+        # We need to access internal implementations of Node.
+        'NODE_WANT_INTERNALS=1',
+        'NODE_SHARED_MODE',
         # This is defined in skia/skia_common.gypi.
         'SK_SUPPORT_LEGACY_GETTOPDEVICE',
         # Disable warnings for g_settings_list_schemas.
@@ -297,6 +303,10 @@
             'libraries': [
               '$(SDKROOT)/System/Library/Frameworks/QTKit.framework',
             ],
+          },
+          'xcode_settings': {
+            # ReactiveCocoa which is used by Squirrel requires using __weak.
+            'CLANG_ENABLE_OBJC_WEAK': 'YES',
           },
         }],  # OS=="mac" and mas_build==0
         ['OS=="mac" and mas_build==1', {

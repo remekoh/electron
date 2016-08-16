@@ -104,7 +104,10 @@ v8::Local<v8::Value> Converter<ContextMenuParamsWithWebContents>::ToV8(
   dict.Set("srcURL", params.src_url);
   dict.Set("mediaType", params.media_type);
   dict.Set("mediaFlags", MediaFlagsToV8(isolate, params.media_flags));
-  dict.Set("hasImageContents", params.has_image_contents);
+  bool has_image_contents =
+    (params.media_type == blink::WebContextMenuData::MediaTypeImage) &&
+    params.has_image_contents;
+  dict.Set("hasImageContents", has_image_contents);
   dict.Set("isEditable", params.is_editable);
   dict.Set("editFlags", EditFlagsToV8(isolate, params.edit_flags));
   dict.Set("selectionText", params.selection_text);
@@ -121,18 +124,18 @@ v8::Local<v8::Value> Converter<ContextMenuParamsWithWebContents>::ToV8(
 }
 
 // static
-bool Converter<content::PermissionStatus>::FromV8(
+bool Converter<blink::mojom::PermissionStatus>::FromV8(
     v8::Isolate* isolate,
     v8::Local<v8::Value> val,
-    content::PermissionStatus* out) {
+    blink::mojom::PermissionStatus* out) {
   bool result;
   if (!ConvertFromV8(isolate, val, &result))
     return false;
 
   if (result)
-    *out = content::PERMISSION_STATUS_GRANTED;
+    *out = blink::mojom::PermissionStatus::GRANTED;
   else
-    *out = content::PERMISSION_STATUS_DENIED;
+    *out = blink::mojom::PermissionStatus::DENIED;
 
   return true;
 }

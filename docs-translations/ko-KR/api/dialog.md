@@ -27,10 +27,12 @@ const {dialog} = require('electron').remote;
 * `options` Object
   * `title` String
   * `defaultPath` String
+  * `buttonLabel` String - 확인 버튼을 위한 커스텀 라벨이며, 빈칸으로 둘 경우 기본
+    라벨이 사용됩니다.
   * `filters` Array
   * `properties` Array - 대화 상자가 사용할 기능(모드)이 담긴 배열입니다.
     다음을 포함할 수 있습니다: `openFile`, `openDirectory`, `multiSelections`,
-    `createDirectory`
+    `createDirectory`, `showHiddenFiles`.
 * `callback` Function (optional)
 
 사용할 대화 상자의 기능이 담긴 배열입니다. 다음을 포함할 수 있습니다: `openFile`,
@@ -71,6 +73,8 @@ const {dialog} = require('electron').remote;
 * `options` Object
   * `title` String
   * `defaultPath` String
+  * `buttonLabel` String - 확인 버튼을 위한 커스텀 라벨이며, 빈칸으로 둘 경우 기본
+    라벨이 사용됩니다.
   * `filters` Array
 * `callback` Function (optional)
 
@@ -90,7 +94,8 @@ const {dialog} = require('electron').remote;
   * `type` String - `"none"`, `"info"`, `"error"`, `"question"`, `"warning"` 중
     하나를 사용할 수 있습니다. Windows에선 따로 `icon`을 설정하지 않은 이상
     "question"과 "info"는 같은 아이콘으로 표시됩니다.
-  * `buttons` Array - 버튼들의 라벨을 포함한 배열입니다.
+  * `buttons` Array - 버튼들의 라벨을 포함한 배열입니다. Windows에서 빈 배열로 둘
+    경우, "OK" 버튼 하나가 포함됩니다.
   * `defaultId` Integer - 메시지 박스가 열렸을 때 기본적으로 선택될 버튼 배열의
     버튼 인덱스입니다.
   * `title` String - 대화 상자의 제목입니다. 몇몇 플랫폼에선 보이지 않을 수 있습니다.
@@ -100,7 +105,7 @@ const {dialog} = require('electron').remote;
   * `cancelId` Integer - 유저가 대화 상자의 버튼을 클릭하지 않고 대화 상자를 취소했을
     때 반환되는 버튼의 인덱스입니다. 기본적으로 버튼 리스트가 "cancel" 또는 "no"
     라벨을 가지고 있을 때 해당 버튼의 인덱스를 반환합니다. 따로 두 라벨이 지정되지
-    않은 경우 0을 반환합니다. OS X와 Windows에선 `cancelId` 지정 여부에 상관없이
+    않은 경우 0을 반환합니다. macOS와 Windows에선 `cancelId` 지정 여부에 상관없이
     "Cancel" 버튼이 언제나 `cancelId`로 지정됩니다.
   * `noLink` Boolean - Windows에서 Electron은 ("Cancel"이나 "Yes"와 같은) 흔히
     사용되는 버튼을 찾으려고 시도하고 대화 상자 내에서 해당 버튼을 커맨드 링크처럼
@@ -111,8 +116,8 @@ const {dialog} = require('electron').remote;
 대화 상자를 표시합니다. `browserWindow`를 지정하면 대화 상자가 완전히 닫힐 때까지
 지정한 창을 사용할 수 없습니다. 완료 시 유저가 선택한 버튼의 인덱스를 반환합니다.
 
-**역주:** 부정을 표현하는 "아니오", "취소"와 같은 한글 단어는 지원되지 않습니다. 만약
-OS X 또는 Windows에서 "확인", "취소"와 같은 순서로 버튼을 지정하게 될 때 Alt + f4로
+**역자주:** 부정을 표현하는 "아니오", "취소"와 같은 한글 단어는 지원되지 않습니다. 만약
+macOS 또는 Windows에서 "확인", "취소"와 같은 순서로 버튼을 지정하게 될 때 Alt + f4로
 해당 대화 상자를 끄게 되면 "확인"을 누른 것으로 판단되어 버립니다. 이를 해결하려면
 "Cancel"을 대신 사용하거나 BrowserWindow API를 사용하여 대화 상자를 직접 구현해야
 합니다.
@@ -125,13 +130,13 @@ OS X 또는 Windows에서 "확인", "취소"와 같은 순서로 버튼을 지�
 에러 메시지를 보여주는 대화 상자를 표시합니다.
 
 이 함수는 `app` 모듈의 `ready` 이벤트가 발생하기 전까지 사용할 수 있습니다. 이 메서드는
-보통 어플리케이션이 시작되기 전에 특정한 에러를 표시하기 위해 사용됩니다. 만약
+보통 애플리케이션이 시작되기 전에 특정한 에러를 표시하기 위해 사용됩니다. 만약
 Linux에서 `ready` 이벤트가 발생하기 전에 이 API를 호출할 경우, 메시지는 stderr를
 통해서 표시되며 GUI 대화 상자는 표시되지 않습니다.
 
 ## Sheets
 
-Mac OS X에선, `browserWindow` 인수에 `BrowserWindow` 객체 참조를 전달하면 대화
+macOS에선, `browserWindow` 인수에 `BrowserWindow` 객체 참조를 전달하면 대화
 상자가 해당 윈도우에 시트처럼 표시되도록 표현할 수 있습니다. 윈도우의 객체 참조가
 제공되지 않으면 모달 형태로 표시됩니다.
 

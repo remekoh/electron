@@ -5,17 +5,16 @@
 An example of showing a dialog to select multiple files and directories:
 
 ```javascript
-let win = ...;  // BrowserWindow in which to show the dialog
-const {dialog} = require('electron');
-
-console.log(dialog.showOpenDialog({properties: ['openFile', 'openDirectory', 'multiSelections']}));
+const {dialog} = require('electron')
+console.log(dialog.showOpenDialog({properties: ['openFile', 'openDirectory', 'multiSelections']}))
 ```
 
 The Dialog is opened from Electron's main thread. If you want to use the dialog
 object from a renderer process, remember to access it using the remote:
 
 ```javascript
-const {dialog} = require('electron').remote;
+const {dialog} = require('electron').remote
+console.log(dialog)
 ```
 
 ## Methods
@@ -28,10 +27,12 @@ The `dialog` module has the following methods:
 * `options` Object
   * `title` String
   * `defaultPath` String
+  * `buttonLabel` String - Custom label for the confirmation button, when
+    left empty the default label will be used.
   * `filters` Array
   * `properties` Array - Contains which features the dialog should use, can
-    contain `openFile`, `openDirectory`, `multiSelections` and
-    `createDirectory`
+    contain `openFile`, `openDirectory`, `multiSelections`, `createDirectory`
+    and `showHiddenFiles`.
 * `callback` Function (optional)
 
 On success this method returns an array of file paths chosen by the user,
@@ -40,7 +41,7 @@ otherwise it returns `undefined`.
 The `filters` specifies an array of file types that can be displayed or
 selected when you want to limit the user to a specific type. For example:
 
-```javascript
+```
 {
   filters: [
     {name: 'Images', extensions: ['jpg', 'png', 'gif']},
@@ -69,6 +70,8 @@ shown.
 * `options` Object
   * `title` String
   * `defaultPath` String
+  * `buttonLabel` String - Custom label for the confirmation button, when
+    left empty the default label will be used.
   * `filters` Array
 * `callback` Function (optional)
 
@@ -88,7 +91,8 @@ will be passed via `callback(filename)`
   * `type` String - Can be `"none"`, `"info"`, `"error"`, `"question"` or
   `"warning"`. On Windows, "question" displays the same icon as "info", unless
   you set an icon using the "icon" option.
-  * `buttons` Array - Array of texts for buttons. On Windows, an empty array will result in one button labeled "OK".
+  * `buttons` Array - Array of texts for buttons. On Windows, an empty array
+    will result in one button labeled "OK".
   * `defaultId` Integer - Index of the button in the buttons array which will
     be selected by default when the message box opens.
   * `title` String - Title of the message box, some platforms will not show it.
@@ -98,7 +102,7 @@ will be passed via `callback(filename)`
   * `cancelId` Integer - The value will be returned when user cancels the dialog
     instead of clicking the buttons of the dialog. By default it is the index
     of the buttons that have "cancel" or "no" as label, or 0 if there is no such
-    buttons. On OS X and Windows the index of "Cancel" button will always be
+    buttons. On macOS and Windows the index of "Cancel" button will always be
     used as `cancelId`, not matter whether it is already specified.
   * `noLink` Boolean - On Windows Electron will try to figure out which one of
     the `buttons` are common buttons (like "Cancel" or "Yes"), and show the
@@ -124,7 +128,7 @@ and no GUI dialog will appear.
 
 ## Sheets
 
-On Mac OS X, dialogs are presented as sheets attached to a window if you provide
+On macOS, dialogs are presented as sheets attached to a window if you provide
 a `BrowserWindow` reference in the `browserWindow` parameter, or modals if no
 window is provided.
 

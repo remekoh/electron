@@ -10,6 +10,7 @@
 #include "base/win/scoped_gdi_object.h"
 #include "base/strings/utf_string_conversions.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/display/win/screen_win.h"
 #include "ui/gfx/icon_util.h"
 
 namespace atom {
@@ -54,7 +55,7 @@ TaskbarHost::~TaskbarHost() {
 
 bool TaskbarHost::SetThumbarButtons(
     HWND window, const std::vector<ThumbarButton>& buttons) {
-  if (buttons.size() > kMaxButtonsCount || !InitailizeTaskbar())
+  if (buttons.size() > kMaxButtonsCount || !InitializeTaskbar())
     return false;
 
   callback_map_.clear();
@@ -117,29 +118,69 @@ bool TaskbarHost::SetThumbarButtons(
   return SUCCEEDED(r);
 }
 
-bool TaskbarHost::SetProgressBar(HWND window, double value) {
-  if (!InitailizeTaskbar())
+bool TaskbarHost::SetProgressBar(
+    HWND window, double value, const std::string& mode) {
+  if (!InitializeTaskbar())
     return false;
 
-  HRESULT r;
-  if (value > 1.0)
-    r = taskbar_->SetProgressState(window, TBPF_INDETERMINATE);
-  else if (value < 0)
-    r = taskbar_->SetProgressState(window, TBPF_NOPROGRESS);
-  else
-    r = taskbar_->SetProgressValue(window, static_cast<int>(value * 100), 100);
-  return SUCCEEDED(r);
+  bool success;
+  if (value > 1.0 || mode == "indeterminate") {
+    success = SUCCEEDED(taskbar_->SetProgressState(window, TBPF_INDETERMINATE));
+  } else if (value < 0 || mode == "none") {
+    success = SUCCEEDED(taskbar_->SetProgressState(window, TBPF_NOPROGRESS));
+  } else {
+    // Unless SetProgressState set a blocking state (TBPF_ERROR, TBPF_PAUSED)
+    // for the window, a call to SetProgressValue assumes the TBPF_NORMAL
+    // state even if it is not explicitly set.
+    // SetProgressValue overrides and clears the TBPF_INDETERMINATE state.
+    if (mode == "error") {
+      success = SUCCEEDED(taskbar_->SetProgressState(window, TBPF_ERROR));
+    } else if (mode == "paused") {
+      success = SUCCEEDED(taskbar_->SetProgressState(window, TBPF_PAUSED));
+    } else {
+      success = SUCCEEDED(taskbar_->SetProgressState(window, TBPF_NORMAL));
+    }
+
+    if (success) {
+      int val = static_cast<int>(value * 100);
+      success = SUCCEEDED(taskbar_->SetProgressValue(window, val, 100));
+    }
+  }
+
+  return success;
 }
 
 bool TaskbarHost::SetOverlayIcon(
     HWND window, const gfx::Image& overlay, const std::string& text) {
-  if (!InitailizeTaskbar())
+  if (!InitializeTaskbar())
     return false;
 
   base::win::ScopedHICON icon(
       IconUtil::CreateHICONFromSkBitmap(overlay.AsBitmap()));
   return SUCCEEDED(taskbar_->SetOverlayIcon(
       window, icon.get(), base::UTF8ToUTF16(text).c_str()));
+}
+
+bool TaskbarHost::SetThumbnailClip(HWND window, const gfx::Rect& region) {
+  if (!InitializeTaskbar())
+    return false;
+
+  if (region.IsEmpty()) {
+    return SUCCEEDED(taskbar_->SetThumbnailClip(window, NULL));
+  } else {
+    RECT rect = display::win::ScreenWin::DIPToScreenRect(window, region)
+        .ToRECT();
+    return SUCCEEDED(taskbar_->SetThumbnailClip(window, &rect));
+  }
+}
+
+bool TaskbarHost::SetThumbnailToolTip(
+    HWND window, const std::string& tooltip) {
+  if (!InitializeTaskbar())
+    return false;
+
+  return SUCCEEDED(taskbar_->SetThumbnailTooltip(
+      window, base::UTF8ToUTF16(tooltip).c_str()));
 }
 
 bool TaskbarHost::HandleThumbarButtonEvent(int button_id) {
@@ -152,7 +193,7 @@ bool TaskbarHost::HandleThumbarButtonEvent(int button_id) {
   return false;
 }
 
-bool TaskbarHost::InitailizeTaskbar() {
+bool TaskbarHost::InitializeTaskbar() {
   if (FAILED(taskbar_.CreateInstance(CLSID_TaskbarList,
                                      nullptr,
                                      CLSCTX_INPROC_SERVER)) ||

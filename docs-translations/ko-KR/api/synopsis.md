@@ -6,7 +6,7 @@ Electron은 모든 [Node.js의 built-in 모듈](http://nodejs.org/api/)과 third
 node 모듈을 완벽하게 지원합니다. ([네이티브 모듈](../tutorial/using-native-node-modules.md)
 포함)
 
-또한 Electron은 네이티브 데스크톱 어플리케이션을 개발 할 수 있도록 추가적인 built-in
+또한 Electron은 네이티브 데스크톱 애플리케이션을 개발 할 수 있도록 추가적인 built-in
 모듈을 제공합니다. 몇몇 모듈은 메인 프로세스에서만 사용할 수 있고 어떤 모듈은 렌더러
 프로세스(웹 페이지)에서만 사용할 수 있습니다. 또한 두 프로세스 모두 사용할 수 있는
 모듈도 있습니다.
@@ -43,7 +43,7 @@ app.on('ready', () => {
 </html>
 ```
 
-어플리케이션을 실행하려면 [앱 실행하기](../tutorial/quick-start.md#앱 실행하기)
+애플리케이션을 실행하려면 [앱 실행하기](../tutorial/quick-start.md#앱 실행하기)
 문서를 참고하기 바랍니다.
 
 ## 분리 할당
@@ -71,25 +71,5 @@ const app = electron.app;
 const BrowserWindow = electron.BrowserWindow;
 ```
 
-## 이전 스타일의 빌트인 모듈 비활성화
-
-v0.35.0 이전 버전에선 빌트인 모듈이 모두 `require('module-name')`같은 형식으로
-사용되었습니다. 하지만 [많은 단점][issue-387]이 있기 때문에 현재 API가 변경되었습니다.
-하지만 오래된 앱의 호환성 유지를 위해 아직 구 버전 API를 지원하고 있습니다.
-
-완벽하게 모든 구 버전 API를 비활성화하려면 `ELECTRON_HIDE_INTERNAL_MODULES` 환경
-변수를 설정하면 됩니다:
-
-```javascript
-process.env.ELECTRON_HIDE_INTERNAL_MODULES = 'true'
-```
-
-또는 `hideInternalModules` API를 사용해도 됩니다:
-
-```javascript
-require('electron').hideInternalModules();
-```
-
 [gui]: https://en.wikipedia.org/wiki/Graphical_user_interface
 [destructuring-assignment]: https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment
-[issue-387]: https://github.com/electron/electron/issues/387

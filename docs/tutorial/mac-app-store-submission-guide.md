@@ -19,14 +19,33 @@ how to meet the Mac App Store requirements.
 To submit your app to the Mac App Store, you first must get a certificate from
 Apple. You can follow these [existing guides][nwjs-guide] on web.
 
+### Get Team ID
+
+Before signing your app, you need to know the Team ID of your account. To locate
+your Team ID, Sign in to [Apple Developer Center](https://developer.apple.com/account/),
+and click Membership in the sidebar. Your Team ID appears in the Membership
+Information section under the team name.
+
 ### Sign Your App
 
-After getting the certificate from Apple, you can package your app by following
+After finishing the preparation work, you can package your app by following
 [Application Distribution](application-distribution.md), and then proceed to
-signing your app. This step is basically the same with other programs, but the
-key is to sign every dependency of Electron one by one.
+signing your app.
 
-First, you need to prepare two entitlements files.
+First, you have to add a `ElectronTeamID` key to your app's `Info.plist`, which
+has your Team ID as key:
+
+```xml
+<plist version="1.0">
+<dict>
+  ...
+  <key>ElectronTeamID</key>
+  <string>TEAM_ID</string>
+</dict>
+</plist>
+```
+
+Then, you need to prepare two entitlements files.
 
 `child.plist`:
 
@@ -52,11 +71,14 @@ First, you need to prepare two entitlements files.
   <dict>
     <key>com.apple.security.app-sandbox</key>
     <true/>
-    <key>com.apple.security.temporary-exception.sbpl</key>
-    <string>(allow mach-lookup (global-name-regex #"^org.chromium.Chromium.rohitfork.[0-9]+$"))</string>
+    <key>com.apple.security.application-groups</key>
+    <string>TEAM_ID.your.bundle.id</string>
   </dict>
 </plist>
 ```
+
+You have to replace `TEAM_ID` with your Team ID, and replace `your.bundle.id`
+with the Bundle ID of your app.
 
 And then sign your app with the following script:
 
@@ -72,51 +94,55 @@ RESULT_PATH="~/Desktop/$APP.pkg"
 # The name of certificates you requested.
 APP_KEY="3rd Party Mac Developer Application: Company Name (APPIDENTITY)"
 INSTALLER_KEY="3rd Party Mac Developer Installer: Company Name (APPIDENTITY)"
+# The path of your plist files.
+CHILD_PLIST="/path/to/child.plist"
+PARENT_PLIST="/path/to/parent.plist"
 
 FRAMEWORKS_PATH="$APP_PATH/Contents/Frameworks"
 
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Electron Framework"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Libraries/libnode.dylib"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/Electron Framework.framework"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper.app/Contents/MacOS/$APP Helper"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper.app/"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper EH.app/Contents/MacOS/$APP Helper EH"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper EH.app/"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper NP.app/Contents/MacOS/$APP Helper NP"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$FRAMEWORKS_PATH/$APP Helper NP.app/"
-codesign -s "$APP_KEY" -f --entitlements child.plist "$APP_PATH/Contents/MacOS/$APP"
-codesign -s "$APP_KEY" -f --entitlements parent.plist "$APP_PATH"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Electron Framework"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/Electron Framework.framework/Versions/A/Libraries/libnode.dylib"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/Electron Framework.framework"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper.app/Contents/MacOS/$APP Helper"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper.app/"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper EH.app/Contents/MacOS/$APP Helper EH"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper EH.app/"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper NP.app/Contents/MacOS/$APP Helper NP"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$FRAMEWORKS_PATH/$APP Helper NP.app/"
+codesign -s "$APP_KEY" -f --entitlements "$CHILD_PLIST" "$APP_PATH/Contents/MacOS/$APP"
+codesign -s "$APP_KEY" -f --entitlements "$PARENT_PLIST" "$APP_PATH"
 
 productbuild --component "$APP_PATH" /Applications --sign "$INSTALLER_KEY" "$RESULT_PATH"
 ```
 
-If you are new to app sandboxing under OS X, you should also read through
+If you are new to app sandboxing under macOS, you should also read through
 Apple's [Enabling App Sandbox][enable-app-sandbox] to have a basic idea, then
 add keys for the permissions needed by your app to the entitlements files.
+
+Apart from manually signing your app, you can also choose to use the
+[electron-osx-sign][electron-osx-sign] module to do the job.
+
+#### Sign Native Modules
+
+Native modules used in your app also need to be signed. If using
+electron-osx-sign, be sure to include the path to the built binaries in the
+argument list:
+
+```bash
+electron-osx-sign YourApp.app YourApp.app/Contents/Resources/app/node_modules/nativemodule/build/release/nativemodule
+```
+
+Also note that native modules may have intermediate files produced which should
+not be included (as they would also need to be signed). If you use
+[electron-packager][electron-packager], add `--ignore=.+\.o$` to build step to
+ignore these files.
 
 ### Upload Your App
 
 After signing your app, you can use Application Loader to upload it to iTunes
 Connect for processing, making sure you have [created a record][create-record]
 before uploading.
-
-### Explain the Usages of `temporary-exception`
-
-When sandboxing your app there was a `temporary-exception` entry added to the
-entitlements, according to the [App Sandbox Temporary Exception
-Entitlements][temporary-exception] documentation, you have to explain why this
-entry is needed:
-
-> Note: If you request a temporary-exception entitlement, be sure to follow the
-guidance regarding entitlements provided on the iTunes Connect website. In
-particular, identify the entitlement and corresponding issue number in the App
-Sandbox Entitlement Usage Information section in iTunes Connect and explain why
-your app needs the exception.
-
-You may explain that your app is built upon Chromium browser, which uses Mach
-port for its multi-process architecture. But there is still probability that
-your app failed the review because of this.
 
 ### Submit Your App for Review
 
@@ -139,6 +165,32 @@ and the following behaviors have been changed:
 Also, due to the usage of app sandboxing, the resources which can be accessed by
 the app are strictly limited; you can read [App Sandboxing][app-sandboxing] for
 more information.
+
+### Additional Entitlements
+
+Depending on which Electron APIs your app uses, you may need to add additional
+entitlements to your `parent.plist` file to be able to use these APIs from your
+app's Mac App Store build.
+
+#### dialog.showOpenDialog
+
+```xml
+<key>com.apple.security.files.user-selected.read-only</key>
+<true/>
+```
+
+See the [Enabling User-Selected File Access documentation][user-selected] for
+more details.
+
+#### dialog.showSaveDialog
+
+```xml
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+```
+
+See the [Enabling User-Selected File Access documentation][user-selected] for
+more details.
 
 ## Cryptographic Algorithms Used by Electron
 
@@ -181,7 +233,10 @@ ERN)][ern-tutorial].
 [nwjs-guide]: https://github.com/nwjs/nw.js/wiki/Mac-App-Store-%28MAS%29-Submission-Guideline#first-steps
 [enable-app-sandbox]: https://developer.apple.com/library/ios/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html
 [create-record]: https://developer.apple.com/library/ios/documentation/LanguagesUtilities/Conceptual/iTunesConnect_Guide/Chapters/CreatingiTunesConnectRecord.html
+[electron-osx-sign]: https://github.com/electron-userland/electron-osx-sign
+[electron-packager]: https://github.com/electron-userland/electron-packager
 [submit-for-review]: https://developer.apple.com/library/ios/documentation/LanguagesUtilities/Conceptual/iTunesConnect_Guide/Chapters/SubmittingTheApp.html
 [app-sandboxing]: https://developer.apple.com/app-sandboxing/
 [ern-tutorial]: https://carouselapps.com/2015/12/15/legally-submit-app-apples-app-store-uses-encryption-obtain-ern/
 [temporary-exception]: https://developer.apple.com/library/mac/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/AppSandboxTemporaryExceptionEntitlements.html
+[user-selected]: https://developer.apple.com/library/mac/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html#//apple_ref/doc/uid/TP40011195-CH4-SW6

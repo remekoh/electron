@@ -15,8 +15,9 @@
 #include "atom/common/node_bindings.h"
 #include "atom/common/node_includes.h"
 #include "base/command_line.h"
-#include "base/thread_task_runner_handle.h"
+#include "base/threading/thread_task_runner_handle.h"
 #include "chrome/browser/browser_process.h"
+#include "content/public/browser/child_process_security_policy.h"
 #include "v8/include/v8-debug.h"
 
 #if defined(USE_X11)
@@ -32,7 +33,7 @@ void Erase(T* container, typename T::iterator iter) {
 }
 
 // static
-AtomBrowserMainParts* AtomBrowserMainParts::self_ = NULL;
+AtomBrowserMainParts* AtomBrowserMainParts::self_ = nullptr;
 
 AtomBrowserMainParts::AtomBrowserMainParts()
     : fake_browser_process_(new BrowserProcess),
@@ -43,6 +44,9 @@ AtomBrowserMainParts::AtomBrowserMainParts()
       gc_timer_(true, true) {
   DCHECK(!self_) << "Cannot have two AtomBrowserMainParts";
   self_ = this;
+  // Register extension scheme as web safe scheme.
+  content::ChildProcessSecurityPolicy::GetInstance()->
+      RegisterWebSafeScheme("chrome-extension");
 }
 
 AtomBrowserMainParts::~AtomBrowserMainParts() {
@@ -124,6 +128,8 @@ void AtomBrowserMainParts::PostEarlyInitialization() {
 }
 
 void AtomBrowserMainParts::PreMainMessageLoopRun() {
+  js_env_->OnMessageLoopCreated();
+
   // Run user's main script before most things get initialized, so we can have
   // a chance to setup everything.
   node_bindings_->PrepareMessageLoop();
@@ -148,7 +154,7 @@ void AtomBrowserMainParts::PreMainMessageLoopRun() {
 #endif
 
 #if !defined(OS_MACOSX)
-  // The corresponding call in OS X is in AtomApplicationDelegate.
+  // The corresponding call in macOS is in AtomApplicationDelegate.
   Browser::Get()->WillFinishLaunching();
   Browser::Get()->DidFinishLaunching();
 #endif
@@ -168,6 +174,8 @@ void AtomBrowserMainParts::PostMainMessageLoopStart() {
 
 void AtomBrowserMainParts::PostMainMessageLoopRun() {
   brightray::BrowserMainParts::PostMainMessageLoopRun();
+
+  js_env_->OnMessageLoopDestroying();
 
 #if defined(OS_MACOSX)
   FreeAppDelegate();

@@ -4,8 +4,9 @@
 
 #include "chrome/renderer/printing/print_web_view_helper.h"
 
+#include <memory>
+
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/process/process_handle.h"
 #include "chrome/common/print_messages.h"
 #include "content/public/renderer/render_thread.h"
@@ -27,7 +28,7 @@ bool PrintWebViewHelper::RenderPreviewPage(
   PrintMsg_PrintPage_Params page_params;
   page_params.params = print_params;
   page_params.page_number = page_number;
-  scoped_ptr<PdfMetafileSkia> draft_metafile;
+  std::unique_ptr<PdfMetafileSkia> draft_metafile;
   PdfMetafileSkia* initial_render_metafile = print_preview_context_.metafile();
   if (print_preview_context_.IsModifiable() && is_print_ready_metafile_sent_) {
     draft_metafile.reset(new PdfMetafileSkia);
@@ -112,6 +113,7 @@ bool PrintWebViewHelper::PrintPagesNative(blink::WebFrame* frame,
     printed_page_params.content_area = content_area_in_dpi[i];
     Send(new PrintHostMsg_DidPrintPage(routing_id(), printed_page_params));
     // Send the rest of the pages with an invalid metafile handle.
+    printed_page_params.metafile_data_handle.Close();
     printed_page_params.metafile_data_handle = base::SharedMemoryHandle();
   }
   return true;
@@ -158,7 +160,7 @@ void PrintWebViewHelper::PrintPageInternal(
       frame->getPrintPageShrink(params.page_number);
   float scale_factor = css_scale_factor * webkit_page_shrink_factor;
 
-  skia::PlatformCanvas* canvas = metafile->GetVectorCanvasForNewPage(
+  SkCanvas* canvas = metafile->GetVectorCanvasForNewPage(
       page_size, canvas_area, scale_factor);
   if (!canvas)
     return;
@@ -197,22 +199,19 @@ bool PrintWebViewHelper::CopyMetafileDataToSharedMem(
   if (buf_size == 0)
     return false;
 
-  base::SharedMemory shared_buf;
-  // Allocate a shared memory buffer to hold the generated metafile data.
-  if (!shared_buf.CreateAndMapAnonymous(buf_size))
+  std::unique_ptr<base::SharedMemory> shared_buf(
+      content::RenderThread::Get()->HostAllocateSharedMemoryBuffer(buf_size));
+  if (!shared_buf)
     return false;
 
-  // Copy the bits into shared memory.
-  if (!metafile.GetData(shared_buf.memory(), buf_size))
+  if (!shared_buf->Map(buf_size))
     return false;
 
-  if (!shared_buf.GiveToProcess(base::GetCurrentProcessHandle(),
-                                shared_mem_handle)) {
+  if (!metafile.GetData(shared_buf->memory(), buf_size))
     return false;
-  }
 
-  Send(new PrintHostMsg_DuplicateSection(routing_id(), *shared_mem_handle,
-                                         shared_mem_handle));
+  *shared_mem_handle =
+      base::SharedMemory::DuplicateHandle(shared_buf->handle());
   return true;
 }
 

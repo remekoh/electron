@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from lib.config import get_target_arch, PLATFORM
-from lib.util import get_host_arch
+from lib.util import get_host_arch, import_vs_env
 
 
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -27,7 +27,9 @@ def main():
 def parse_args():
   parser = argparse.ArgumentParser(description='Update build configurations')
   parser.add_argument('--defines', default='',
-                      help='The definetions passed to gyp')
+                      help='The build variables passed to gyp')
+  parser.add_argument('--msvs', action='store_true',
+                      help='Generate Visual Studio project')
   return parser.parse_args()
 
 
@@ -49,11 +51,14 @@ def update_gyp():
 
 
 def run_gyp(target_arch, component):
+  # Update the VS build env.
+  import_vs_env(target_arch)
+
   env = os.environ.copy()
   if PLATFORM == 'linux' and target_arch != get_host_arch():
     env['GYP_CROSSCOMPILE'] = '1'
   elif PLATFORM == 'win32':
-    env['GYP_MSVS_VERSION'] = '2013'
+    env['GYP_MSVS_VERSION'] = '2015'
   python = sys.executable
   if sys.platform == 'cygwin':
     # Force using win32 python on cygwin.
@@ -83,7 +88,11 @@ def run_gyp(target_arch, component):
     if define:
       defines += ['-D' + define]
 
-  return subprocess.call([python, gyp, '-f', 'ninja', '--depth', '.',
+  generator = 'ninja'
+  if args.msvs:
+    generator = 'msvs-ninja'
+
+  return subprocess.call([python, gyp, '-f', generator, '--depth', '.',
                           'electron.gyp', '-Icommon.gypi'] + defines, env=env)
 
 

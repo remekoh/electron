@@ -14,14 +14,13 @@ similar to Java's [RMI][rmi]. An example of creating a browser window from a
 renderer process:
 
 ```javascript
-const {BrowserWindow} = require('electron').remote;
-
-let win = new BrowserWindow({width: 800, height: 600});
-win.loadURL('https://github.com');
+const {BrowserWindow} = require('electron').remote
+let win = new BrowserWindow({width: 800, height: 600})
+win.loadURL('https://github.com')
 ```
 
 **Note:** for the reverse (access the renderer process from the main process),
-you can use [webContents.executeJavascript](web-contents.md#webcontentsexecutejavascriptcode-usergesture).
+you can use [webContents.executeJavascript](web-contents.md#webcontentsexecutejavascriptcode-usergesture-callback).
 
 ## Remote Objects
 
@@ -37,7 +36,8 @@ process. Instead, it created a `BrowserWindow` object in the main process and
 returned the corresponding remote object in the renderer process, namely the
 `win` object.
 
-Please note that only [enumerable properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Enumerability_and_ownership_of_properties) are accessible via remote.
+Please note that only [enumerable properties](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Enumerability_and_ownership_of_properties) which are present when the remote object is first referenced are
+accessible via remote.
 
 ## Lifetime of Remote Objects
 
@@ -69,23 +69,22 @@ For instance you can't use a function from the renderer process in an
 ```javascript
 // main process mapNumbers.js
 exports.withRendererCallback = (mapper) => {
-  return [1,2,3].map(mapper);
-};
+  return [1, 2, 3].map(mapper)
+}
 
 exports.withLocalCallback = () => {
-  return exports.mapNumbers(x => x + 1);
-};
+  return [1, 2, 3].map(x => x + 1)
+}
 ```
 
 ```javascript
 // renderer process
-const mapNumbers = require('remote').require('./mapNumbers');
+const mapNumbers = require('electron').remote.require('./mapNumbers')
+const withRendererCb = mapNumbers.withRendererCallback(x => x + 1)
+const withLocalCb = mapNumbers.withLocalCallback()
 
-const withRendererCb = mapNumbers.withRendererCallback(x => x + 1);
-
-const withLocalCb = mapNumbers.withLocalCallback();
-
-console.log(withRendererCb, withLocalCb); // [true, true, true], [2, 3, 4]
+console.log(withRendererCb, withLocalCb)
+// [undefined, undefined, undefined], [2, 3, 4]
 ```
 
 As you can see, the renderer callback's synchronous return value was not as
@@ -99,9 +98,9 @@ For example, the following code seems innocent at first glance. It installs a
 callback for the `close` event on a remote object:
 
 ```javascript
-remote.getCurrentWindow().on('close', () => {
-  // blabla...
-});
+require('electron').remote.getCurrentWindow().on('close', () => {
+  // window was closed...
+})
 ```
 
 But remember the callback is referenced by the main process until you
@@ -123,7 +122,8 @@ The built-in modules in the main process are added as getters in the `remote`
 module, so you can use them directly like the `electron` module.
 
 ```javascript
-const app = remote.app;
+const app = require('electron').remote.app
+console.log(app)
 ```
 
 ## Methods

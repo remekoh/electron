@@ -2,12 +2,10 @@
 
 const assert = require('assert')
 const path = require('path')
+const {closeWindow} = require('./window-helpers')
 
-const ipcRenderer = require('electron').ipcRenderer
-const remote = require('electron').remote
-
-const ipcMain = remote.require('electron').ipcMain
-const BrowserWindow = remote.require('electron').BrowserWindow
+const {ipcRenderer, remote} = require('electron')
+const {ipcMain, webContents, BrowserWindow} = remote
 
 const comparePaths = function (path1, path2) {
   if (process.platform === 'win32') {
@@ -19,6 +17,12 @@ const comparePaths = function (path1, path2) {
 
 describe('ipc module', function () {
   var fixtures = path.join(__dirname, 'fixtures')
+
+  var w = null
+
+  afterEach(function () {
+    return closeWindow(w).then(function () { w = null })
+  })
 
   describe('remote.require', function () {
     it('should returns same object for the same module', function () {
@@ -32,9 +36,72 @@ describe('ipc module', function () {
       assert.equal(a.id, 1127)
     })
 
+    it('should work when object has no prototype', function () {
+      var a = remote.require(path.join(fixtures, 'module', 'no-prototype.js'))
+      assert.equal(a.foo.constructor.name, '')
+      assert.equal(a.foo.bar, 'baz')
+      assert.equal(a.foo.baz, false)
+      assert.equal(a.bar, 1234)
+      assert.equal(a.anonymous.constructor.name, '')
+      assert.equal(a.getConstructorName(Object.create(null)), '')
+      assert.equal(a.getConstructorName(new (class {})), '')
+    })
+
     it('should search module from the user app', function () {
       comparePaths(path.normalize(remote.process.mainModule.filename), path.resolve(__dirname, 'static', 'main.js'))
       comparePaths(path.normalize(remote.process.mainModule.paths[0]), path.resolve(__dirname, 'static', 'node_modules'))
+    })
+
+    it('handles circular references in arrays and objects', function () {
+      var a = remote.require(path.join(fixtures, 'module', 'circular.js'))
+
+      var arrayA = ['foo']
+      var arrayB = [arrayA, 'bar']
+      arrayA.push(arrayB)
+      assert.deepEqual(a.returnArgs(arrayA, arrayB), [
+        ['foo', [null, 'bar']],
+        [['foo', null], 'bar']
+      ])
+
+      var objectA = {foo: 'bar'}
+      var objectB = {baz: objectA}
+      objectA.objectB = objectB
+      assert.deepEqual(a.returnArgs(objectA, objectB), [
+        {foo: 'bar', objectB: {baz: null}},
+        {baz: {foo: 'bar', objectB: null}}
+      ])
+
+      arrayA = [1, 2, 3]
+      assert.deepEqual(a.returnArgs({foo: arrayA}, {bar: arrayA}), [
+        {foo: [1, 2, 3]},
+        {bar: [1, 2, 3]}
+      ])
+
+      objectA = {foo: 'bar'}
+      assert.deepEqual(a.returnArgs({foo: objectA}, {bar: objectA}), [
+        {foo: {foo: 'bar'}},
+        {bar: {foo: 'bar'}}
+      ])
+
+      arrayA = []
+      arrayA.push(arrayA)
+      assert.deepEqual(a.returnArgs(arrayA), [
+        [null]
+      ])
+
+      objectA = {}
+      objectA.foo = objectA
+      objectA.bar = 'baz'
+      assert.deepEqual(a.returnArgs(objectA), [
+        {foo: null, bar: 'baz'}
+      ])
+
+      objectA = {}
+      objectA.foo = {bar: objectA}
+      objectA.bar = 'baz'
+      assert.deepEqual(a.returnArgs(objectA), [
+        {foo: {bar: null}, bar: 'baz'}
+      ])
     })
   })
 
@@ -76,25 +143,30 @@ describe('ipc module', function () {
 
     it('is referenced by its members', function () {
       let stringify = remote.getGlobal('JSON').stringify
-      gc();
+      global.gc()
       stringify({})
-    });
+    })
   })
 
   describe('remote value in browser', function () {
-    var print = path.join(fixtures, 'module', 'print_name.js')
+    const print = path.join(fixtures, 'module', 'print_name.js')
+    const printName = remote.require(print)
 
     it('keeps its constructor name for objects', function () {
-      var buf = new Buffer('test')
-      var print_name = remote.require(print)
-      assert.equal(print_name.print(buf), 'Buffer')
+      const buf = new Buffer('test')
+      assert.equal(printName.print(buf), 'Buffer')
     })
 
     it('supports instanceof Date', function () {
-      var now = new Date()
-      var print_name = remote.require(print)
-      assert.equal(print_name.print(now), 'Date')
-      assert.deepEqual(print_name.echo(now), now)
+      const now = new Date()
+      assert.equal(printName.print(now), 'Date')
+      assert.deepEqual(printName.echo(now), now)
+    })
+
+    it('supports TypedArray', function () {
+      const values = [1, 2, 3, 4]
+      const typedArray = printName.typedArray(values)
+      assert.deepEqual(values, typedArray)
     })
   })
 
@@ -104,6 +176,49 @@ describe('ipc module', function () {
       promise.twicePromise(Promise.resolve(1234)).then(function (value) {
         assert.equal(value, 2468)
         done()
+      })
+    })
+
+    it('handles rejections via catch(onRejected)', function (done) {
+      var promise = remote.require(path.join(fixtures, 'module', 'rejected-promise.js'))
+      promise.reject(Promise.resolve(1234)).catch(function (error) {
+        assert.equal(error.message, 'rejected')
+        done()
+      })
+    })
+
+    it('handles rejections via then(onFulfilled, onRejected)', function (done) {
+      var promise = remote.require(path.join(fixtures, 'module', 'rejected-promise.js'))
+      promise.reject(Promise.resolve(1234)).then(function () {}, function (error) {
+        assert.equal(error.message, 'rejected')
+        done()
+      })
+    })
+
+    it('does not emit unhandled rejection events in the main process', function (done) {
+      remote.process.once('unhandledRejection', function (reason) {
+        done(reason)
+      })
+
+      var promise = remote.require(path.join(fixtures, 'module', 'unhandled-rejection.js'))
+      promise.reject().then(function () {
+        done(new Error('Promise was not rejected'))
+      }).catch(function (error) {
+        assert.equal(error.message, 'rejected')
+        done()
+      })
+    })
+
+    it('emits unhandled rejection events in the renderer process', function (done) {
+      window.addEventListener('unhandledrejection', function (event) {
+        event.preventDefault()
+        assert.equal(event.reason.message, 'rejected')
+        done()
+      })
+
+      var promise = remote.require(path.join(fixtures, 'module', 'unhandled-rejection.js'))
+      promise.reject().then(function () {
+        done(new Error('Promise was not rejected'))
       })
     })
   })
@@ -153,9 +268,9 @@ describe('ipc module', function () {
     it('is referenced by methods in prototype chain', function () {
       let method = derived.method
       derived = null
-      gc()
+      global.gc()
       assert.equal(method(), 'method')
-    });
+    })
   })
 
   describe('ipc.sender.send', function () {
@@ -179,6 +294,15 @@ describe('ipc module', function () {
       })
       ipcRenderer.send('message', currentDate)
     })
+
+    it('can send objects with DOM class prototypes', function (done) {
+      ipcRenderer.once('message', function (event, value) {
+        assert.equal(value.protocol, 'file:')
+        assert.equal(value.hostname, '')
+        done()
+      })
+      ipcRenderer.send('message', document.location)
+    })
   })
 
   describe('ipc.sendSync', function () {
@@ -194,19 +318,18 @@ describe('ipc module', function () {
     it('does not crash when reply is not sent and browser is destroyed', function (done) {
       this.timeout(10000)
 
-      var w = new BrowserWindow({
+      w = new BrowserWindow({
         show: false
       })
       ipcMain.once('send-sync-message', function (event) {
         event.returnValue = null
-        w.destroy()
         done()
       })
       w.loadURL('file://' + path.join(fixtures, 'api', 'send-sync-message.html'))
     })
 
     it('does not crash when reply is sent by multiple listeners', function (done) {
-      var w = new BrowserWindow({
+      w = new BrowserWindow({
         show: false
       })
       ipcMain.on('send-sync-message', function (event) {
@@ -214,20 +337,37 @@ describe('ipc module', function () {
       })
       ipcMain.on('send-sync-message', function (event) {
         event.returnValue = null
-        w.destroy()
         done()
       })
       w.loadURL('file://' + path.join(fixtures, 'api', 'send-sync-message.html'))
     })
   })
 
-  describe('remote listeners', function () {
-    var w = null
-
+  describe('ipcRenderer.sendTo', function () {
+    let contents = null
+    beforeEach(function () {
+      contents = webContents.create({})
+    })
     afterEach(function () {
-      w.destroy()
+      ipcRenderer.removeAllListeners('pong')
+      contents.destroy()
+      contents = null
     })
 
+    it('sends message to WebContents', function (done) {
+      const webContentsId = remote.getCurrentWebContents().id
+      ipcRenderer.once('pong', function (event, id) {
+        assert.equal(webContentsId, id)
+        done()
+      })
+      contents.once('did-finish-load', function () {
+        ipcRenderer.sendTo(contents.id, 'ping', webContentsId)
+      })
+      contents.loadURL('file://' + path.join(fixtures, 'pages', 'ping-pong.html'))
+    })
+  })
+
+  describe('remote listeners', function () {
     it('can be added and removed correctly', function () {
       w = new BrowserWindow({
         show: false

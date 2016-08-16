@@ -12,7 +12,7 @@
 #include "atom/browser/ui/file_dialog.h"
 #include "base/bind.h"
 #include "base/files/file_util.h"
-#include "base/prefs/pref_service.h"
+#include "components/prefs/pref_service.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
@@ -77,13 +77,22 @@ void AtomDownloadManagerDelegate::OnDownloadPathGenerated(
     window = relay->window.get();
 
   base::FilePath path;
-  if (file_dialog::ShowSaveDialog(window, item->GetURL().spec(), default_path,
+  if (file_dialog::ShowSaveDialog(window, item->GetURL().spec(),
+                                  "", default_path,
                                   file_dialog::Filters(), &path)) {
     // Remember the last selected download directory.
     AtomBrowserContext* browser_context = static_cast<AtomBrowserContext*>(
         download_manager_->GetBrowserContext());
     browser_context->prefs()->SetFilePath(prefs::kDownloadDefaultDirectory,
                                           path.DirName());
+
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::Locker locker(isolate);
+    v8::HandleScope handle_scope(isolate);
+    api::DownloadItem* download_item = api::DownloadItem::FromWrappedClass(
+        isolate, item);
+    if (download_item)
+      download_item->SetSavePath(path);
   }
 
   // Running the DownloadTargetCallback with an empty FilePath signals that the

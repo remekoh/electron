@@ -25,6 +25,7 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_util.h"
+#include "third_party/skia/include/core/SkPixelRef.h"
 
 #if defined(OS_WIN)
 #include "atom/common/asar/archive.h"
@@ -63,10 +64,10 @@ float GetScaleFactorFromPath(const base::FilePath& path) {
 
   // We don't try to convert string to float here because it is very very
   // expensive.
-  for (unsigned i = 0; i < arraysize(kScaleFactorPairs); ++i) {
-    if (base::EndsWith(filename, kScaleFactorPairs[i].name,
+  for (const auto& kScaleFactorPair : kScaleFactorPairs) {
+    if (base::EndsWith(filename, kScaleFactorPair.name,
                        base::CompareCase::INSENSITIVE_ASCII))
-      return kScaleFactorPairs[i].scale;
+      return kScaleFactorPair.scale;
   }
 
   return 1.0f;
@@ -76,12 +77,12 @@ bool AddImageSkiaRep(gfx::ImageSkia* image,
                      const unsigned char* data,
                      size_t size,
                      double scale_factor) {
-  scoped_ptr<SkBitmap> decoded(new SkBitmap());
+  std::unique_ptr<SkBitmap> decoded(new SkBitmap());
 
   // Try PNG first.
   if (!gfx::PNGCodec::Decode(data, size, decoded.get()))
     // Try JPEG.
-    decoded.reset(gfx::JPEGCodec::Decode(data, size));
+    decoded = gfx::JPEGCodec::Decode(data, size);
 
   if (!decoded)
     return false;
@@ -142,7 +143,7 @@ bool IsTemplateFilename(const base::FilePath& path) {
 #endif
 
 #if defined(OS_WIN)
-bool ReadImageSkiaFromICO(gfx::ImageSkia* image, const base::FilePath& path) {
+base::win::ScopedHICON ReadICOFromPath(int size, const base::FilePath& path) {
   // If file is in asar archive, we extract it to a temp file so LoadImage can
   // load it.
   base::FilePath asar_path, relative_path;
@@ -155,18 +156,24 @@ bool ReadImageSkiaFromICO(gfx::ImageSkia* image, const base::FilePath& path) {
   }
 
   // Load the icon from file.
-  base::win::ScopedHICON icon(static_cast<HICON>(
-      LoadImage(NULL, image_path.value().c_str(), IMAGE_ICON, 0, 0,
-                LR_DEFAULTSIZE | LR_LOADFROMFILE)));
-  if (!icon.get())
+  return base::win::ScopedHICON(static_cast<HICON>(
+      LoadImage(NULL, image_path.value().c_str(), IMAGE_ICON, size, size,
+                LR_LOADFROMFILE)));
+}
+
+bool ReadImageSkiaFromICO(gfx::ImageSkia* image, HICON icon) {
+  // Convert the icon from the Windows specific HICON to gfx::ImageSkia.
+  std::unique_ptr<SkBitmap> bitmap(IconUtil::CreateSkBitmapFromHICON(icon));
+  if (!bitmap)
     return false;
 
-  // Convert the icon from the Windows specific HICON to gfx::ImageSkia.
-  scoped_ptr<SkBitmap> bitmap(IconUtil::  CreateSkBitmapFromHICON(icon.get()));
   image->AddRepresentation(gfx::ImageSkiaRep(*bitmap, 1.0f));
   return true;
 }
 #endif
+
+void Noop(char*, void*) {
+}
 
 }  // namespace
 
@@ -175,13 +182,53 @@ NativeImage::NativeImage(v8::Isolate* isolate, const gfx::Image& image)
   Init(isolate);
 }
 
+#if defined(OS_WIN)
+NativeImage::NativeImage(v8::Isolate* isolate, const base::FilePath& hicon_path)
+    : hicon_path_(hicon_path) {
+  // Use the 256x256 icon as fallback icon.
+  gfx::ImageSkia image_skia;
+  ReadImageSkiaFromICO(&image_skia, GetHICON(256));
+  image_ = gfx::Image(image_skia);
+  Init(isolate);
+}
+#endif
+
 NativeImage::~NativeImage() {}
+
+#if defined(OS_WIN)
+HICON NativeImage::GetHICON(int size) {
+  auto iter = hicons_.find(size);
+  if (iter != hicons_.end())
+    return iter->second.get();
+
+  // First try loading the icon with specified size.
+  if (!hicon_path_.empty()) {
+    hicons_[size] = std::move(ReadICOFromPath(size, hicon_path_));
+    return hicons_[size].get();
+  }
+
+  // Then convert the image to ICO.
+  if (image_.IsEmpty())
+    return NULL;
+  hicons_[size] = std::move(
+      IconUtil::CreateHICONFromSkBitmap(image_.AsBitmap()));
+  return hicons_[size].get();
+}
+#endif
 
 v8::Local<v8::Value> NativeImage::ToPNG(v8::Isolate* isolate) {
   scoped_refptr<base::RefCountedMemory> png = image_.As1xPNGBytes();
   return node::Buffer::Copy(isolate,
                             reinterpret_cast<const char*>(png->front()),
                             static_cast<size_t>(png->size())).ToLocalChecked();
+}
+
+v8::Local<v8::Value> NativeImage::ToBitmap(v8::Isolate* isolate) {
+  const SkBitmap* bitmap = image_.ToSkBitmap();
+  SkPixelRef* ref = bitmap->pixelRef();
+  return node::Buffer::Copy(isolate,
+                            reinterpret_cast<const char*>(ref->pixels()),
+                            bitmap->getSafeSize()).ToLocalChecked();
 }
 
 v8::Local<v8::Value> NativeImage::ToJPEG(v8::Isolate* isolate, int quality) {
@@ -200,6 +247,16 @@ std::string NativeImage::ToDataURL() {
   base::Base64Encode(data_url, &data_url);
   data_url.insert(0, "data:image/png;base64,");
   return data_url;
+}
+
+v8::Local<v8::Value> NativeImage::GetBitmap(v8::Isolate* isolate) {
+  const SkBitmap* bitmap = image_.ToSkBitmap();
+  SkPixelRef* ref = bitmap->pixelRef();
+  return node::Buffer::New(isolate,
+                           reinterpret_cast<char*>(ref->pixels()),
+                           bitmap->getSafeSize(),
+                           &Noop,
+                           nullptr).ToLocalChecked();
 }
 
 v8::Local<v8::Value> NativeImage::GetNativeHandle(v8::Isolate* isolate,
@@ -263,16 +320,15 @@ mate::Handle<NativeImage> NativeImage::CreateFromJPEG(
 // static
 mate::Handle<NativeImage> NativeImage::CreateFromPath(
     v8::Isolate* isolate, const base::FilePath& path) {
-  gfx::ImageSkia image_skia;
   base::FilePath image_path = NormalizePath(path);
-
-  if (image_path.MatchesExtension(FILE_PATH_LITERAL(".ico"))) {
 #if defined(OS_WIN)
-    ReadImageSkiaFromICO(&image_skia, image_path);
-#endif
-  } else {
-    PopulateImageSkiaRepsFromPath(&image_skia, image_path);
+  if (image_path.MatchesExtension(FILE_PATH_LITERAL(".ico"))) {
+    return mate::CreateHandle(isolate,
+                              new NativeImage(isolate, image_path));
   }
+#endif
+  gfx::ImageSkia image_skia;
+  PopulateImageSkiaRepsFromPath(&image_skia, image_path);
   gfx::Image image(image_skia);
   mate::Handle<NativeImage> handle = Create(isolate, image);
 #if defined(OS_MACOSX)
@@ -312,22 +368,57 @@ mate::Handle<NativeImage> NativeImage::CreateFromDataURL(
 
 // static
 void NativeImage::BuildPrototype(
-    v8::Isolate* isolate, v8::Local<v8::ObjectTemplate> prototype) {
-  mate::ObjectTemplateBuilder(isolate, prototype)
-      .SetMethod("toPng", &NativeImage::ToPNG)
-      .SetMethod("toJpeg", &NativeImage::ToJPEG)
+    v8::Isolate* isolate, v8::Local<v8::FunctionTemplate> prototype) {
+  prototype->SetClassName(mate::StringToV8(isolate, "NativeImage"));
+  mate::ObjectTemplateBuilder(isolate, prototype->PrototypeTemplate())
+      .SetMethod("toPNG", &NativeImage::ToPNG)
+      .SetMethod("toJPEG", &NativeImage::ToJPEG)
+      .SetMethod("toBitmap", &NativeImage::ToBitmap)
+      .SetMethod("getBitmap", &NativeImage::GetBitmap)
       .SetMethod("getNativeHandle", &NativeImage::GetNativeHandle)
       .SetMethod("toDataURL", &NativeImage::ToDataURL)
       .SetMethod("isEmpty", &NativeImage::IsEmpty)
       .SetMethod("getSize", &NativeImage::GetSize)
       .SetMethod("setTemplateImage", &NativeImage::SetTemplateImage)
-      .SetMethod("isTemplateImage", &NativeImage::IsTemplateImage);
+      .SetMethod("isTemplateImage", &NativeImage::IsTemplateImage)
+      // TODO(kevinsawicki): Remove in 2.0, deprecate before then with warnings
+      .SetMethod("toPng", &NativeImage::ToPNG)
+      .SetMethod("toJpeg", &NativeImage::ToJPEG);
 }
 
 }  // namespace api
 
 }  // namespace atom
 
+namespace mate {
+
+v8::Local<v8::Value> Converter<mate::Handle<atom::api::NativeImage>>::ToV8(
+    v8::Isolate* isolate,
+    const mate::Handle<atom::api::NativeImage>& val) {
+  return val.ToV8();
+}
+
+bool Converter<mate::Handle<atom::api::NativeImage>>::FromV8(
+    v8::Isolate* isolate, v8::Local<v8::Value> val,
+    mate::Handle<atom::api::NativeImage>* out) {
+  // Try converting from file path.
+  base::FilePath path;
+  if (ConvertFromV8(isolate, val, &path)) {
+    *out = atom::api::NativeImage::CreateFromPath(isolate, path);
+    // Should throw when failed to initialize from path.
+    return !(*out)->image().IsEmpty();
+  }
+
+  WrappableBase* wrapper = static_cast<WrappableBase*>(internal::FromV8Impl(
+      isolate, val));
+  if (!wrapper)
+    return false;
+
+  *out = CreateHandle(isolate, static_cast<atom::api::NativeImage*>(wrapper));
+  return true;
+}
+
+}  // namespace mate
 
 namespace {
 

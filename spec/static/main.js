@@ -8,6 +8,7 @@ const dialog = electron.dialog
 const BrowserWindow = electron.BrowserWindow
 const protocol = electron.protocol
 
+const Coverage = require('electabul').Coverage
 const fs = require('fs')
 const path = require('path')
 const url = require('url')
@@ -63,6 +64,15 @@ ipcMain.on('echo', function (event, msg) {
   event.returnValue = msg
 })
 
+const coverage = new Coverage({
+  outputPath: path.join(__dirname, '..', '..', 'out', 'coverage')
+})
+coverage.setup()
+
+ipcMain.on('get-main-process-coverage', function (event) {
+  event.returnValue = global.__coverage__ || null
+})
+
 global.isCi = !!argv.ci
 if (global.isCi) {
   process.removeAllListeners('uncaughtException')
@@ -95,7 +105,7 @@ app.on('ready', function () {
     width: 800,
     height: 600,
     webPreferences: {
-      backgroundThrottling: false,
+      backgroundThrottling: false
     }
   })
   window.loadURL(url.format({
@@ -119,9 +129,9 @@ app.on('ready', function () {
   // For session's download test, listen 'will-download' event in browser, and
   // reply the result to renderer for verifying
   var downloadFilePath = path.join(__dirname, '..', 'fixtures', 'mock.pdf')
-  ipcMain.on('set-download-option', function (event, need_cancel, prevent_default) {
+  ipcMain.on('set-download-option', function (event, needCancel, preventDefault) {
     window.webContents.session.once('will-download', function (e, item) {
-      if (prevent_default) {
+      if (preventDefault) {
         e.preventDefault()
         const url = item.getURL()
         const filename = item.getFilename()
@@ -142,9 +152,10 @@ app.on('ready', function () {
             item.getReceivedBytes(),
             item.getTotalBytes(),
             item.getContentDisposition(),
-            item.getFilename())
+            item.getFilename(),
+            item.getSavePath())
         })
-        if (need_cancel) item.cancel()
+        if (needCancel) item.cancel()
       }
     })
     event.returnValue = 'done'

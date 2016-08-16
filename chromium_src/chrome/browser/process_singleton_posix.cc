@@ -74,12 +74,12 @@
 #include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/thread_task_runner_handle.h"
 #include "base/threading/platform_thread.h"
+#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "content/public/browser/browser_thread.h"
-#include "net/base/net_util.h"
+#include "net/base/network_interfaces.h"
 #include "ui/base/l10n/l10n_util.h"
 
 #if defined(TOOLKIT_VIEWS) && defined(OS_LINUX) && !defined(OS_CHROMEOS)

@@ -7,7 +7,7 @@ import sys
 
 from lib.config import LIBCHROMIUMCONTENT_COMMIT, BASE_URL, PLATFORM, \
                        enable_verbose_mode, is_verbose_mode, get_target_arch
-from lib.util import execute_stdout, get_atom_shell_version, scoped_cwd
+from lib.util import execute_stdout, get_electron_version, scoped_cwd
 
 
 SOURCE_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -50,11 +50,9 @@ def main():
     libcc_static_library_path = os.path.join(dist_dir, 'static_library')
 
   if PLATFORM != 'win32':
-    # Download prebuilt clang binaries.
-    update_clang()
     if not args.disable_clang and args.clang_dir == '':
-      # Build with prebuilt clang.
-      set_clang_env(os.environ)
+      # Download prebuilt clang binaries.
+      update_clang()
 
   setup_python_libs()
   update_node_modules('.')
@@ -67,7 +65,7 @@ def main():
 
   create_chrome_version_h()
   touch_config_gypi()
-  run_update(defines)
+  run_update(defines, args.msvs)
   update_electron_modules('spec', args.target_arch)
 
 
@@ -88,6 +86,8 @@ def parse_args():
                       action='store_true',
                       help='Run non-interactively by assuming "yes" to all ' \
                            'prompts.')
+  parser.add_argument('--msvs', action='store_true',
+                      help='Generate Visual Studio project')
   parser.add_argument('--target_arch', default=get_target_arch(),
                       help='Manually specify the arch to build for')
   parser.add_argument('--clang_dir', default='', help='Path to clang binaries')
@@ -103,11 +103,13 @@ def parse_args():
                       help='The shared library path of libchromiumcontent.')
   parser.add_argument('--libcc_static_library_path', required=False,
                       help='The static library path of libchromiumcontent.')
+  parser.add_argument('--defines', default='',
+                      help='The build variables passed to gyp')
   return parser.parse_args()
 
 
 def args_to_defines(args):
-  defines = ''
+  defines = args.defines
   if args.disable_clang:
     defines += ' clang=0'
   if args.clang_dir:
@@ -125,7 +127,7 @@ def check_root():
 
 
 def update_submodules():
-  execute_stdout(['git', 'submodule', 'sync'])
+  execute_stdout(['git', 'submodule', 'sync', '--recursive'])
   execute_stdout(['git', 'submodule', 'update', '--init', '--recursive'])
 
 
@@ -186,7 +188,7 @@ def update_node_modules(dirname, env=None):
 def update_electron_modules(dirname, target_arch):
   env = os.environ.copy()
   env['npm_config_arch']    = target_arch
-  env['npm_config_target']  = get_atom_shell_version()
+  env['npm_config_target']  = get_electron_version()
   env['npm_config_disturl'] = 'https://atom.io/download/atom-shell'
   update_node_modules(dirname, env)
 
@@ -198,7 +200,8 @@ def update_win32_python():
 
 
 def build_libchromiumcontent(verbose, target_arch, defines):
-  args = [os.path.join(SOURCE_ROOT, 'script', 'build-libchromiumcontent.py')]
+  args = [sys.executable,
+          os.path.join(SOURCE_ROOT, 'script', 'build-libchromiumcontent.py')]
   if verbose:
     args += ['-v']
   if defines:
@@ -250,9 +253,14 @@ def touch_config_gypi():
       f.write(content)
 
 
-def run_update(defines):
-  update = os.path.join(SOURCE_ROOT, 'script', 'update.py')
-  execute_stdout([sys.executable, update, '--defines', defines])
+def run_update(defines, msvs):
+  args = [sys.executable, os.path.join(SOURCE_ROOT, 'script', 'update.py')]
+  if defines:
+    args += ['--defines', defines]
+  if msvs:
+    args += ['--msvs']
+
+  execute_stdout(args)
 
 
 if __name__ == '__main__':

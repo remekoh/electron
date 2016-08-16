@@ -5,10 +5,12 @@ const url = require('url')
 const {app, session, ipcMain, BrowserWindow} = require('electron').remote
 
 describe('<webview> tag', function () {
-  this.timeout(10000)
+  this.timeout(20000)
 
   var fixtures = path.join(__dirname, 'fixtures')
+
   var webview = null
+  let w = null
 
   beforeEach(function () {
     webview = new WebView()
@@ -18,13 +20,34 @@ describe('<webview> tag', function () {
     if (document.body.contains(webview)) {
       document.body.removeChild(webview)
     }
+    if (w) {
+      w.destroy()
+      w = null
+    }
   })
 
   it('works without script tag in page', function (done) {
-    let w = new BrowserWindow({show: false})
+    w = new BrowserWindow({show: false})
     ipcMain.once('pong', function () {
-      w.destroy()
       done()
+    })
+    w.loadURL('file://' + fixtures + '/pages/webview-no-script.html')
+  })
+
+  it('is disabled when nodeIntegration is disabled', function (done) {
+    w = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        preload: path.join(fixtures, 'module', 'preload-webview.js')
+      }
+    })
+    ipcMain.once('webview', function (event, type) {
+      if (type === 'undefined') {
+        done()
+      } else {
+        done('WebView still exists')
+      }
     })
     w.loadURL('file://' + fixtures + '/pages/webview-no-script.html')
   })
@@ -82,40 +105,6 @@ describe('<webview> tag', function () {
       webview.setAttribute('nodeintegration', 'on')
       webview.src = 'file://' + fixtures + '/pages/post.html'
       document.body.appendChild(webview)
-    })
-
-    it('disables node integration when disabled on the parent BrowserWindow', function (done) {
-      var b = undefined
-
-      ipcMain.once('answer', function (event, typeofProcess) {
-        try {
-          assert.equal(typeofProcess, 'undefined')
-          done()
-        } finally {
-          b.close()
-        }
-      })
-
-      var windowUrl = require('url').format({
-        pathname: `${fixtures}/pages/webview-no-node-integration-on-window.html`,
-        protocol: 'file',
-        query: {
-          p: `${fixtures}/pages/web-view-log-process.html`
-        },
-        slashes: true
-      })
-      var preload = path.join(fixtures, 'module', 'answer.js')
-
-      b = new BrowserWindow({
-        height: 400,
-        width: 400,
-        show: false,
-        webPreferences: {
-          preload: preload,
-          nodeIntegration: false,
-        }
-      })
-      b.loadURL(windowUrl)
     })
 
     it('disables node integration on child windows when it is disabled on the webview', function (done) {
@@ -270,6 +259,30 @@ describe('<webview> tag', function () {
       webview.src = 'data:text/html;base64,' + encoded
       document.body.appendChild(webview)
     })
+
+    it('does not break node integration', function (done) {
+      webview.addEventListener('console-message', function (e) {
+        assert.equal(e.message, 'function object object')
+        done()
+      })
+      webview.setAttribute('nodeintegration', 'on')
+      webview.setAttribute('disablewebsecurity', '')
+      webview.src = 'file://' + fixtures + '/pages/d.html'
+      document.body.appendChild(webview)
+    })
+
+    it('does not break preload script', function (done) {
+      var listener = function (e) {
+        assert.equal(e.message, 'function object object')
+        webview.removeEventListener('console-message', listener)
+        done()
+      }
+      webview.addEventListener('console-message', listener)
+      webview.setAttribute('disablewebsecurity', '')
+      webview.setAttribute('preload', fixtures + '/module/preload.js')
+      webview.src = 'file://' + fixtures + '/pages/e.html'
+      document.body.appendChild(webview)
+    })
   })
 
   describe('partition attribute', function () {
@@ -321,6 +334,10 @@ describe('<webview> tag', function () {
   })
 
   describe('allowpopups attribute', function () {
+    if (process.env.TRAVIS === 'true' && process.platform === 'darwin') {
+      return
+    }
+
     it('can not open new window when not set', function (done) {
       var listener = function (e) {
         assert.equal(e.message, 'null')
@@ -346,6 +363,10 @@ describe('<webview> tag', function () {
   })
 
   describe('new-window event', function () {
+    if (process.env.TRAVIS === 'true' && process.platform === 'darwin') {
+      return
+    }
+
     it('emits when window.open is called', function (done) {
       webview.addEventListener('new-window', function (e) {
         assert.equal(e.url, 'http://host/')
@@ -755,13 +776,12 @@ describe('<webview> tag', function () {
   })
 
   describe('permission-request event', function () {
-    function setUpRequestHandler (webview, requested_permission, completed) {
+    function setUpRequestHandler (webview, requestedPermission, completed) {
       var listener = function (webContents, permission, callback) {
         if (webContents.getId() === webview.getId()) {
-          assert.equal(permission, requested_permission)
+          assert.equal(permission, requestedPermission)
           callback(false)
-          if (completed)
-            completed()
+          if (completed) completed()
         }
       }
       session.fromPartition(webview.partition).setPermissionRequestHandler(listener)
@@ -834,7 +854,7 @@ describe('<webview> tag', function () {
         'did-get-response-details.html': 'mainFrame',
         'logo.png': 'image'
       }
-      var responses = 0;
+      var responses = 0
       webview.addEventListener('did-get-response-details', function (event) {
         responses++
         var fileName = event.newURL.slice(event.newURL.lastIndexOf('/') + 1)
@@ -853,6 +873,63 @@ describe('<webview> tag', function () {
       })
       webview.src = 'file://' + path.join(fixtures, 'pages', 'did-get-response-details.html')
       document.body.appendChild(webview)
+    })
+  })
+
+  it('inherits the zoomFactor of the parent window', function (done) {
+    w = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        zoomFactor: 1.2
+      }
+    })
+    ipcMain.once('pong', function (event, zoomFactor, zoomLevel) {
+      assert.equal(zoomFactor, 1.2)
+      assert.equal(zoomLevel, 1)
+      done()
+    })
+    w.loadURL('file://' + fixtures + '/pages/webview-zoom-factor.html')
+  })
+
+  it('inherits the parent window visibility state and receives visibilitychange events', function (done) {
+    w = new BrowserWindow({
+      show: false
+    })
+
+    ipcMain.once('pong', function (event, visibilityState, hidden) {
+      assert.equal(visibilityState, 'hidden')
+      assert.equal(hidden, true)
+
+      w.webContents.send('ELECTRON_RENDERER_WINDOW_VISIBILITY_CHANGE', 'visible')
+
+      ipcMain.once('pong', function (event, visibilityState, hidden) {
+        assert.equal(visibilityState, 'visible')
+        assert.equal(hidden, false)
+        done()
+      })
+    })
+
+    w.loadURL('file://' + fixtures + '/pages/webview-visibilitychange.html')
+  })
+
+  it('loads devtools extensions registered on the parent window', function (done) {
+    this.timeout(10000)
+
+    w = new BrowserWindow({
+      show: false
+    })
+
+    BrowserWindow.removeDevToolsExtension('foo')
+
+    var extensionPath = path.join(__dirname, 'fixtures', 'devtools-extensions', 'foo')
+    BrowserWindow.addDevToolsExtension(extensionPath)
+
+    w.loadURL('file://' + fixtures + '/pages/webview-devtools.html')
+
+    ipcMain.once('answer', function (event, message) {
+      assert.equal(message.runtimeId, 'foo')
+      assert.notEqual(message.tabId, w.webContents.id)
+      done()
     })
   })
 })

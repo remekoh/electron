@@ -1,4 +1,4 @@
-# Supported Chrome command line switches
+# Supported Chrome Command Line Switches
 
 > Command line switches supported by Electron.
 
@@ -7,13 +7,13 @@ your app's main script before the [ready][ready] event of the [app][app] module
 is emitted:
 
 ```javascript
-const {app} = require('electron');
-app.commandLine.appendSwitch('remote-debugging-port', '8315');
-app.commandLine.appendSwitch('host-rules', 'MAP * 127.0.0.1');
+const {app} = require('electron')
+app.commandLine.appendSwitch('remote-debugging-port', '8315')
+app.commandLine.appendSwitch('host-rules', 'MAP * 127.0.0.1')
 
 app.on('ready', () => {
   // Your code here
-});
+})
 ```
 
 ## --ignore-connections-limit=`domains`
@@ -23,6 +23,10 @@ Ignore the connections limit for `domains` list separated by `,`.
 ## --disable-http-cache
 
 Disables the disk cache for HTTP requests.
+
+## --disable-http2
+
+Disable HTTP/2 and SPDY/3.1 protocols.
 
 ## --remote-debugging-port=`port`
 
@@ -53,6 +57,7 @@ list of hosts. This flag has an effect only if used in tandem with
 For example:
 
 ```javascript
+const {app} = require('electron')
 app.commandLine.appendSwitch('proxy-bypass-list', '<local>;*.google.com;*foo.com;1.2.3.4:5678')
 ```
 
@@ -90,6 +95,24 @@ connection, and the endpoint host in a `SOCKS` proxy connection).
 ## --host-resolver-rules=`rules`
 
 Like `--host-rules` but these `rules` only apply to the host resolver.
+
+## --auth-server-whitelist=`url`
+
+A comma-separated list of servers for which integrated authentication is enabled.
+
+For example:
+
+```
+--auth-server-whitelist='*example.com, *foobar.com, *baz'
+```
+
+then any `url` ending with `example.com`, `foobar.com`, `baz` will be considered
+for integrated authentication. Without `*` prefix the url has to match exactly.
+
+## --auth-negotiate-delegate-whitelist=`url`
+
+A comma-separated list of servers for which delegation of user credentials is required.
+Without `*` prefix the url has to match exactly.
 
 ## --ignore-certificate-errors
 

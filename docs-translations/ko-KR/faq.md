@@ -9,7 +9,7 @@ Electron의 Chrome 버전은 보통 새로운 Chrome 안정 버전이 릴리즈 
 Electron은 크롬이 사용하는 안정된 채널만을 이용합니다, 만약 중요한 수정이 베타 또는
 개발 채널에 패치된 경우, 이전 버전의 채널로 롤백합니다.
 
-자세한 내용은 [보안 설명](../tutorial/electron-security.md)을 참고하세요.
+자세한 내용은 [보안 설명](../tutorial/security.md)을 참고하세요.
 
 ## Electron은 언제 최신 버전의 Node.js로 업그레이드 하나요?
 
@@ -29,8 +29,8 @@ Node.js의 새로운 기능은 보통 V8 업그레이드에서 가져옵니다. 
 [`sessionStorage`][session-storage], 그리고 [IndexedDB][indexed-db]가 있습니다.
 
 또는 Electron에서만 사용할 수 있는 IPC 시스템을 사용하여 메인 프로세스의 global
-변수에 데이터를 저장한 후 다음과 같이 렌더러 프로세스에서 `remote` 모듈을 사용하여
-접근할 수 있습니다:
+변수에 데이터를 저장한 후 다음과 같이 렌더러 프로세스에서 `electron` 모듈의 `remote`
+속성을 통하여 접근할 수 있습니다:
 
 ```javascript
 // 메인 프로세스에서
@@ -41,15 +41,15 @@ global.sharedObject = {
 
 ```javascript
 // 첫 번째 페이지에서
-require('remote').getGlobal('sharedObject').someProperty = 'new value';
+require('electron').remote.getGlobal('sharedObject').someProperty = 'new value';
 ```
 
 ```javascript
 // 두 번째 페이지에서
-console.log(require('remote').getGlobal('sharedObject').someProperty);
+console.log(require('electron').remote.getGlobal('sharedObject').someProperty);
 ```
 
-## 제작한 어플리케이션의 윈도우/트레이가 몇 분 후에나 나타납니다.
+## 제작한 애플리케이션의 윈도우/트레이가 몇 분 후에나 나타납니다.
 
 이러한 문제가 발생하는 이유는 보통 윈도우/트레이를 담은 변수에 가비지 컬렉션이 작동해서
 그럴 가능성이 높습니다.
